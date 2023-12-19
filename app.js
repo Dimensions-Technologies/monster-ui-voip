@@ -22,7 +22,7 @@ define(function(require) {
 	}));
 
 	var app = {
-		name: 'callogs',
+		name: 'voip',
 
 		css: [ 'app' ],
 
@@ -92,9 +92,7 @@ define(function(require) {
 			self.loadGlobalData(function() {
 				/* On first Load, load my office */
 				template.find('.category#myOffice').addClass('active');
-				console.log('log point 1');
 				monster.pub('voip.myOffice.render', { parent: template.find('.right-content') });
-				console.log('log point 2');
 			});
 
 			self.bindEvents(template);
