@@ -15,6 +15,7 @@
 @import '../submodules/strategy/partials/changeCallerIdPopup.scss';
 @import '../submodules/strategy/partials/customConferenceGreeting.scss';
 
+/*
 #voip_container {
 	.left-menu {
 		#myOffice {
@@ -30,6 +31,12 @@
 		@import "../submodules/strategy/_strategy.scss";
 	}
 }
+*/
+
+.right-content {
+	margin: 0 auto !important; /* Center align */
+	width: 100% !important; /* Full width */
+}
 
 #voip_container_overlay {
 	position: fixed;
@@ -39,4 +46,8 @@
 	height: 100%;
 	background-color: #000;
 	opacity: .3;
+}
+
+#spinner {
+	padding-top: 40%;
 }

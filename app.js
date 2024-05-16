@@ -4,17 +4,7 @@ define(function(require) {
 		monster = require('monster');
 
 	var appSubmodules = [
-		'callLogs',
-		'devices',
-		'featureCodes',
-		'groups',
-		'myOffice',
-		'numbers',
-		'strategy',
-		'strategyHours',
-		'strategyHolidays',
-		'users',
-		'vmboxes'
+		'callLogs'
 	];
 
 	require(_.map(appSubmodules, function(name) {
@@ -91,8 +81,8 @@ define(function(require) {
 
 			self.loadGlobalData(function() {
 				/* On first Load, load my office */
-				template.find('.category#myOffice').addClass('active');
-				monster.pub('voip.myOffice.render', { parent: template.find('.right-content') });
+				//template.find('.category#callLogs').addClass('active');
+				monster.pub('callLogs.render', { parent: template.find('.right-content') });
 			});
 
 			self.bindEvents(template);
