@@ -448,7 +448,6 @@ define(function(require) {
 					},
 					
 					success: function(data, status) {
-						console.log('Getting Call Details Successful');
 						callback(data.data, data.next_start_key);
 					},
 					
