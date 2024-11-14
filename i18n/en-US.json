@@ -1243,7 +1243,11 @@
 		"loading": "Loading additional information...",
 		"actions": {
 			"report": "Copy details",
-			"details": "Technical Details"
+			"details": "Technical Details",
+			"download": "Download PCAP",
+			"downloadRequested": "PCAP file request submitted for the selected call",
+			"downloadSuccess": "PCAP file has been downloaded successfully",
+			"downloadError": "Unable to download the PCAP file for the selected call"
 		},
 		"diagnosticCallData": {
 			"accountId": "Account ID: {{variable}}",
