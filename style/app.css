@@ -1,0 +1,22 @@
+@import '../../../css/partials/base';
+@import url('../submodules/callLogs/callLogs.css');
+@import url('../style/fonts.css');
+
+.right-content {
+	margin: 0 auto !important; /* Center align */
+	width: 100% !important; /* Full width */
+}
+
+#voip_container_overlay {
+	position: fixed;
+	top: 0;
+	right: 0;
+	width: 100%;
+	height: 100%;
+	background-color: #000;
+	opacity: .3;
+}
+
+#spinner {
+	padding-top: 20%;
+}

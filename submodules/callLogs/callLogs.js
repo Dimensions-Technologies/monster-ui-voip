@@ -2,7 +2,9 @@ define(function(require) {
 	var $ = require('jquery'),
 		_ = require('lodash'),
 		monster = require('monster'),
-		moment = require('moment');
+		moment = require('moment'),
+		miscSettings = {},
+		requestSettings = {};
 
 	var app = {
 		requests: {},
@@ -14,11 +16,15 @@ define(function(require) {
 		},
 
 		subscribe: {
-			'voip.callLogs.render': 'callLogsRender'
+			'callLogs.render': 'callLogsRender'
 		},
 
 		callLogsRender: function(args) {
 			var self = this;
+
+			// set variables for use elsewhere
+			miscSettings = args.miscSettings;
+			requestSettings = args.requestSettings;
 
 			self.callLogsGetData(function() {
 				self.callLogsRenderContent(args.parent, args.fromDate, args.toDate, args.type, args.callback);
@@ -38,6 +44,7 @@ define(function(require) {
 				self.appFlags.callLogs.devices = _.keyBy(results.devices, 'id');
 
 				globalCallback && globalCallback();
+
 			});
 		},
 
@@ -129,13 +136,13 @@ define(function(require) {
 				defaultDateRange = 1,
 				container = parent || $('.right-content'),
 				maxDateRange = 31;
-
+		
 			if (!toDate && !fromDate) {
 				var dates = monster.util.getDefaultRangeDates(defaultDateRange);
 				fromDate = dates.from;
 				toDate = dates.to;
 			}
-
+		
 			var tz = monster.util.getCurrentTimeZone(),
 				dataTemplate = {
 					timezone: 'GMT' + moment().tz(tz).format('Z'),
@@ -145,63 +152,171 @@ define(function(require) {
 					showFilteredDates: ['thisMonth', 'thisWeek'].indexOf(type) >= 0,
 					showReport: monster.config.whitelabel.callReportEmail ? true : false
 				};
+		
+			// Create and show the initial template with spinner
+			template = $(self.getTemplate({
+				name: 'layout',
+				data: {
+					...dataTemplate,
+					miscSettings: miscSettings
+				},
+				submodule: 'callLogs'
+			}));
+			container.empty().append(template);
+			
+			// show loading spinner and disable all buttons in the btn-group when data is loading
+			template.find('#spinner').show();
+			template.find('.btn-group .btn').prop('disabled', true);
 
-			self.callLogsGetCdrs(fromDate, toDate, function(cdrs, nextStartKey) {
+			template.find('.fixed-ranges-date').hide();
+			template.find('.download-csv').prop('disabled', true);
+			template.find('.reload-cdrs').prop('disabled', true);
+			template.find('.search-div .search-query').attr('disabled', true);
+			
+			template.find('.call-logs-content').hide();
+			template.find('.call-logs-loader').hide();
+
+			// set date range and disable date range fields when loading custom data
+			if (type == 'custom') {
+				template.find('#startDate').val(monster.util.toFriendlyDate(fromDate, 'date'));
+				template.find('#startDate').attr('disabled', true);
+				template.find('#endDate').val(monster.util.toFriendlyDate(toDate, 'date'));
+				template.find('#endDate').attr('disabled', true);
+				template.find('.apply-filter').attr('disabled', true);
+			}
+					
+			// fetch the data
+			self.callLogsGetCdrs(fromDate, toDate, function(cdrs, nextStartKey, errorCode) {
 				cdrs = self.callLogsFormatCdrs(cdrs);
+		
+				type = type || 'today';
 
-				dataTemplate.cdrs = cdrs;
-				template = $(self.getTemplate({
-					name: 'layout',
-					data: dataTemplate,
-					submodule: 'callLogs'
-				}));
-				monster.ui.tooltips(template);
-
-				if (cdrs && cdrs.length) {
-					var cdrsTemplate = $(self.getTemplate({
-						name: 'cdrsList',
+				if (errorCode == '500') {
+					
+					dataTemplate.cdrs = [];
+					dataTemplate.type = type || 'today';
+					template = $(self.getTemplate({
+						name: 'layout',
 						data: {
-							cdrs: cdrs,
-							showReport: monster.config.whitelabel.callReportEmail ? true : false
+							...dataTemplate,
+							miscSettings: miscSettings
 						},
 						submodule: 'callLogs'
 					}));
-					template.find('.call-logs-grid .grid-row-container')
-							.append(cdrsTemplate);
-				}
+					
+					var optionsDatePicker = {
+						container: template,
+						range: maxDateRange
+					};
+		
+					monster.ui.initRangeDatepicker(optionsDatePicker);
 
-				var optionsDatePicker = {
-					container: template,
-					range: maxDateRange
-				};
+					template.find('#startDate').datepicker('setDate', fromDate);
+					template.find('#endDate').datepicker('setDate', toDate);
 
-				monster.ui.initRangeDatepicker(optionsDatePicker);
-
-				template.find('#startDate').datepicker('setDate', fromDate);
-				template.find('#endDate').datepicker('setDate', toDate);
-
-				if (!nextStartKey) {
+					template.find('#spinner').hide();
+					template.find('.call-logs-grid .grid-row .grid-cell').text(self.i18n.active().callLogs.outOfRange);
 					template.find('.call-logs-loader').hide();
+
+					self.callLogsBindEvents({
+						template: template,
+						fromDate: fromDate,
+						toDate: toDate
+					});
+
+					monster.ui.tooltips(template);
+
+					container.empty().append(template);
+
+					template.find('.grid-row.set-date-range').hide();
+					template.find('.download-csv').prop('disabled', true);
+					template.find('.reload-cdrs').prop('disabled', true);
+					template.find('.search-div .search-query').attr('disabled', true);
+
+				} else {
+					// update dataTemplate with the retrieved data and ensure type is correct
+					dataTemplate.cdrs = cdrs;
+					dataTemplate.type = type || 'today';
+		
+					// update the template with data
+					template = $(self.getTemplate({
+						name: 'layout',
+						data: {
+							...dataTemplate,
+							miscSettings: miscSettings
+						},
+						submodule: 'callLogs'
+					}));
+		
+					monster.ui.tooltips(template);
+		
+					if (cdrs && cdrs.length) {
+						var cdrsTemplate = $(self.getTemplate({
+							name: 'cdrsList',
+							data: {
+								cdrs: cdrs,
+								showReport: monster.config.whitelabel.callReportEmail ? true : false,
+								enableGoogleIcons: miscSettings.enableGoogleIcons,
+								enableDirectionText: miscSettings.enableDirectionText
+							},
+							submodule: 'callLogs'
+						}));
+						template.find('.call-logs-grid .grid-row-container')
+								.append(cdrsTemplate);
+					}
+		
+					var optionsDatePicker = {
+						container: template,
+						range: maxDateRange
+					};
+		
+					monster.ui.initRangeDatepicker(optionsDatePicker);
+		
+					template.find('#startDate').datepicker('setDate', fromDate);
+					template.find('#endDate').datepicker('setDate', toDate);
+		
+					if (!nextStartKey) {
+						template.find('.call-logs-loader').hide();
+					}
+		
+					// reapply the active tab after rendering
+					template.find('.btn-group .btn').removeClass('active');
+					template.find('.btn[data-type="' + type + '"]').addClass('active');
+
+					self.callLogsBindEvents({
+						template: template,
+						cdrs: cdrs,
+						fromDate: fromDate,
+						toDate: toDate,
+						nextStartKey: nextStartKey
+					});
+		
+					monster.ui.tooltips(template);
+		
+					// hide the spinner and update container with the new template
+					template.find('#spinner').hide();
+					container.empty().append(template);
+
+					// disable search and download if there is no data
+					if (cdrs.length > 0) {
+						template.find('.download-csv').prop('disabled', false);
+						template.find('.reload-cdrs').prop('disabled', false);
+						template.find('.search-div .search-query').attr('disabled', false);
+					} else {
+						template.find('.download-csv').prop('disabled', true);
+						template.find('.reload-cdrs').prop('disabled', true);
+						template.find('.search-div .search-query').attr('disabled', true);
+					}
+
+					template.find('.grid-row.set-date-range').hide();
+
 				}
-
-				self.callLogsBindEvents({
-					template: template,
-					cdrs: cdrs,
-					fromDate: fromDate,
-					toDate: toDate,
-					nextStartKey: nextStartKey
-				});
-
-				monster.ui.tooltips(template);
-
-				container
-					.empty()
-					.append(template);
 
 				callback && callback();
 			});
 		},
-
+		
+		
 		callLogsBindEvents: function(params) {
 			var self = this,
 				template = params.template,
@@ -218,10 +333,13 @@ define(function(require) {
 				var fromDate = template.find('input.filter-from').datepicker('getDate'),
 					toDate = template.find('input.filter-to').datepicker('getDate');
 
-				self.callLogsRenderContent(template.parents('.right-content'), fromDate, toDate, 'custom');
+				// call the method without changing the tab
+				self.callLogsRenderContent(template.parents('.right-content'), fromDate, toDate, 'custom', function() {
+				});
+				
 			});
 
-			template.find('.fixed-ranges button').on('click', function(e) {
+			template.find('.fixed-ranges .btn-group button').on('click', function(e) {
 				var $this = $(this),
 					type = $this.data('type');
 
@@ -229,9 +347,9 @@ define(function(require) {
 				template.find('.fixed-ranges button').removeClass('active');
 				$this.addClass('active');
 
-				if (type !== 'custom') {
+				if (type != 'custom') {
 					// Without this, it doesn't look like we're refreshing the data.
-					// GOod way to solve it would be to separate the filters from the call logs view, and only refresh the call logs.
+					// Good way to solve it would be to separate the filters from the call logs view, and only refresh the call logs.
 					template.find('.call-logs-content').empty();
 
 					var dates = self.callLogsGetFixedDatesFromType(type);
@@ -239,6 +357,17 @@ define(function(require) {
 				} else {
 					template.find('.fixed-ranges-date').hide();
 					template.find('.custom-range').addClass('active');
+					template.find('.search-div .search-query').val('');
+					
+					template.find('.grid-row').show();
+					template.find('.grid-row.no-match').hide();
+					template.find('.grid-row.no-cdrs').hide();
+					template.find('.call-logs-grid .grid-row-container').hide();
+					
+					template.find('.call-logs-loader').hide();
+					template.find('.download-csv').prop('disabled', true);
+					template.find('.reload-cdrs').prop('disabled', true);
+					template.find('.search-div .search-query').attr('disabled', true);
 				}
 			});
 
@@ -248,6 +377,21 @@ define(function(require) {
 					url = self.apiUrl + 'accounts/' + self.accountId + '/cdrs?created_from=' + fromDateTimestamp + '&created_to=' + toDateTimestamp + '&paginate=false&accept=text/csv&auth_token=' + self.getAuthToken();
 
 				window.open(url, '_blank');
+			});
+
+			template.find('.reload-cdrs').on('click', function(e) {
+				var activeButtonType = template.find('.btn-group .btn.active').data('type');
+
+				if (activeButtonType == 'custom') {
+					var fromDate = template.find('input.filter-from').datepicker('getDate'),
+					toDate = template.find('input.filter-to').datepicker('getDate');
+					self.callLogsRenderContent(template.parents('.right-content'), fromDate, toDate, 'custom', function() {
+					});
+				} else {
+					var dates = self.callLogsGetFixedDatesFromType(activeButtonType);
+					self.callLogsRenderContent(template.parents('.right-content'), dates.from, dates.to, activeButtonType);
+				}
+
 			});
 
 			template.find('.search-div input.search-query').on('keyup', function(e) {
@@ -306,7 +450,23 @@ define(function(require) {
 
 					if (!extraLegs.hasClass('data-loaded')) {
 						self.callLogsGetLegs(callId, function(cdrs) {
-							var formattedCdrs = self.callLogsFormatCdrs(cdrs);
+							var formattedCdrs = self.callLogsFormatCdrs(cdrs),
+							networkTraceRetention = miscSettings.networkTraceRetention;
+
+							function isWithinSixDays(callDate) {
+								var currentDate = new Date(),
+									sixDaysAgo = new Date(currentDate);
+								sixDaysAgo.setDate(currentDate.getDate() - networkTraceRetention);
+								return callDate >= sixDaysAgo && callDate <= currentDate;
+							}
+							
+							formattedCdrs.forEach(function(cdr) {
+								var callDate = new Date(monster.util.gregorianToDate(cdr.timestamp));
+								cdr.showPcapDownload = isWithinSixDays(callDate);
+								cdr.enableNetworkTraceDownload = miscSettings.enableNetworkTraceDownload;
+								cdr.enableGoogleIcons = miscSettings.enableGoogleIcons;
+								cdr.hideDeviceIcons = miscSettings.hideDeviceIcons;
+							});
 
 							// Make other legs available when querying but not copying
 							var otherLegs = cdrs.map(function(call) { return call.id; });
@@ -321,7 +481,8 @@ define(function(require) {
 									.append($(self.getTemplate({
 										name: 'interactionLegs',
 										data: {
-											cdrs: formattedCdrs
+											cdrs: formattedCdrs,
+											miscSettings: miscSettings
 										},
 										submodule: 'callLogs'
 									})));
@@ -340,6 +501,14 @@ define(function(require) {
 				self.callLogsShowDetailsPopup(cdrId);
 			});
 
+			if (miscSettings.enableNetworkTraceDownload) {
+				template.on('click', '.grid-cell.actions .download-pcap', function(e) {
+					e.stopPropagation();
+					var cdrId = $(this).parents('.grid-row').data('id');
+					self.callLogsGetCallId(cdrId);
+				});
+			}
+
 			template.on('click', '.grid-cell.report a', function(e) {
 				e.stopPropagation();
 			});
@@ -357,7 +526,9 @@ define(function(require) {
 							name: 'cdrsList',
 							data: {
 								cdrs: newCdrs,
-								showReport: monster.config.whitelabel.callReportEmail ? true : false
+								showReport: monster.config.whitelabel.callReportEmail ? true : false,
+								enableGoogleIcons: miscSettings.enableGoogleIcons,
+								enableDirectionText: miscSettings.enableDirectionText
 							},
 							submodule: 'callLogs'
 						}));
@@ -422,31 +593,65 @@ define(function(require) {
 			};
 		},
 
-		callLogsGetCdrs: function(fromDate, toDate, callback, pageStartKey) {
+		callLogsGetCdrs: function(fromDate, toDate, callback, pageStartKey, retryCount = 3) {
 			var self = this,
 				fromDateTimestamp = monster.util.dateToBeginningOfGregorianDay(fromDate),
 				toDateTimestamp = monster.util.dateToEndOfGregorianDay(toDate),
 				filters = {
 					'created_from': fromDateTimestamp,
 					'created_to': toDateTimestamp,
-					'page_size': 50
+					'page_size': miscSettings.getRequestPageSize || 50
 				};
-
+		
 			if (pageStartKey) {
 				filters.start_key = pageStartKey;
 			}
-
-			self.callApi({
-				resource: 'cdrs.listByInteraction',
-				data: {
-					accountId: self.accountId,
-					filters: filters
-				},
-				success: function(data, status) {
-					callback(data.data, data.next_start_key);
+		
+			var apiCall = function() {
+				if (miscSettings.enableConsoleLogging) {
+					console.log('Getting Call Details');
 				}
-			});
-		},
+				self.callApi({
+					resource: 'cdrs.listByInteraction',
+					data: {
+						accountId: self.accountId,
+						filters: filters,
+						generateError: false
+					},
+					
+					success: function(data, status) {
+						callback(data.data, data.next_start_key, null);
+					},
+					
+					error: function(data, status) {
+						if (miscSettings.enableConsoleLogging) {
+							console.log('Getting Call Details Error');
+						}
+						if (data.error === "500") {
+							if (miscSettings.enableConsoleLogging) {
+								console.log("500 error occurred, datastore_missing");
+							}
+							callback(null, null, '500');
+						} else if (data.error === "503") {
+							if (miscSettings.enableConsoleLogging) {
+								console.log("503 error occurred, retrying...");
+							}
+							// wait 10 seconds
+							setTimeout(function() {
+								apiCall();
+							}, 10000);
+						} else {
+							console.error("API call failed:", data);
+						}
+					}
+				});
+			};
+		
+			// Call the API function
+			apiCall();
+			
+		},		
+		
 
 		callLogsGetLegs: function(callId, callback) {
 			var self = this;
@@ -560,6 +765,7 @@ define(function(require) {
 		},
 
 		callLogsShowDetailsPopup: function(callLogId) {
+
 			var self = this;
 			self.callApi({
 				resource: 'cdrs.get',
@@ -583,6 +789,98 @@ define(function(require) {
 			});
 		},
 
+		callLogsGetCallId: function(callLogId) {
+			var self = this;
+			self.callApi({
+				resource: 'cdrs.get',
+				data: {
+					accountId: self.accountId,
+					cdrId: callLogId
+				},
+				success: function(data, status) {
+
+					var callId = data.data.call_id,
+						timestamp = monster.util.gregorianToDate(data.data.timestamp);
+
+					self.computeHash(callId, function(callIdHash) {
+
+						if (miscSettings.enableConsoleLogging) {
+							console.log('callIdHash', callIdHash);
+						}
+						
+						self.downloadNetworkTrace(callId, timestamp, callIdHash);
+
+					});
+
+				},
+				error: function(data, status) {
+					monster.ui.alert('error', self.i18n.active().callLogs.alertMessages.getDetailsError);
+				}
+			});
+		},
+		
+		downloadNetworkTrace: function(callId, timestamp, callIdHash) {
+			var self = this, 
+				apiRoot = requestSettings.getNetworkTrace.apiRoot,
+				url = requestSettings.getNetworkTrace.url,
+				endpointUrl = apiRoot + url;
+
+			monster.ui.toast({
+				type: 'info',
+				message: self.i18n.active().callLogs.actions.downloadRequested,
+				options: {
+					positionClass: 'toast-bottom-right',
+					timeOut: 8000,
+					extendedTimeOut: 5000,
+				}
+			});
+			
+			fetch(endpointUrl, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({ call_id: callId, timestamp: timestamp, checksum: callIdHash })
+			})
+			.then(response => {
+				if (!response.ok) {
+					throw new Error('Failed to fetch the file');
+				}
+				return response.blob();
+			})
+			.then(blob => {
+				var url = window.URL.createObjectURL(blob);
+				var a = document.createElement('a');
+				a.href = url;
+				a.download = callId + '.pcap';
+				document.body.appendChild(a);
+				a.click();
+				a.remove();
+				window.URL.revokeObjectURL(url);
+
+				monster.ui.toast({
+					type: 'info',
+					message: self.i18n.active().callLogs.actions.downloadSuccess,
+					options: {
+						positionClass: 'toast-bottom-right',
+						timeOut: 8000,
+						extendedTimeOut: 5000,
+					}
+				});
+			})
+			.catch(error => {
+				monster.ui.toast({
+					type: 'error',
+					message: self.i18n.active().callLogs.actions.downloadError,
+					options: {
+						positionClass: 'toast-bottom-right',
+						timeOut: 8000,
+						extendedTimeOut: 5000,
+					}
+				});
+			});
+		},
+
 		callLogsListDevices: function(callback) {
 			var self = this;
 
@@ -598,7 +896,30 @@ define(function(require) {
 					callback && callback(data.data);
 				}
 			});
+		},
+
+		computeHash: function(callId, callback) {
+
+			var key = requestSettings.getNetworkTrace.requestKey,
+				encoder = new TextEncoder(),
+				data = encoder.encode(callId + key);
+		
+			crypto.subtle.digest("SHA-256", data)
+				.then(function(buffer) {
+					var hashedBytes = new Uint8Array(buffer);
+					var hexString = Array.from(hashedBytes)
+						.map(function(b) { return b.toString(16).padStart(2, '0').toUpperCase(); })
+						.join('');
+					
+					callback && callback(hexString);
+				})
+				.catch(function(error) {
+					console.error("Error Computing Hash:", error);
+					callback && callback("");
+				});
+
 		}
+
 	};
 
 	return app;
