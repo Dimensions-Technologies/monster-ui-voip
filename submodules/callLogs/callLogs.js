@@ -154,7 +154,10 @@ define(function(require) {
 			// Create and show the initial template with spinner
 			template = $(self.getTemplate({
 				name: 'layout',
-				data: dataTemplate,
+				data: {
+					...dataTemplate,
+					miscSettings: miscSettings
+				},
 				submodule: 'callLogs'
 			}));
 			container.empty().append(template);
@@ -192,7 +195,10 @@ define(function(require) {
 					dataTemplate.type = type || 'today';
 					template = $(self.getTemplate({
 						name: 'layout',
-						data: dataTemplate,
+						data: {
+							...dataTemplate,
+							miscSettings: miscSettings
+						},
 						submodule: 'callLogs'
 					}));
 					
@@ -233,7 +239,10 @@ define(function(require) {
 					// update the template with data
 					template = $(self.getTemplate({
 						name: 'layout',
-						data: dataTemplate,
+						data: {
+							...dataTemplate,
+							miscSettings: miscSettings
+						},
 						submodule: 'callLogs'
 					}));
 		
@@ -244,7 +253,9 @@ define(function(require) {
 							name: 'cdrsList',
 							data: {
 								cdrs: cdrs,
-								showReport: monster.config.whitelabel.callReportEmail ? true : false
+								showReport: monster.config.whitelabel.callReportEmail ? true : false,
+								enableGoogleIcons: miscSettings.enableGoogleIcons,
+								enableDirectionText: miscSettings.enableDirectionText
 							},
 							submodule: 'callLogs'
 						}));
@@ -451,6 +462,8 @@ define(function(require) {
 								var callDate = new Date(monster.util.gregorianToDate(cdr.timestamp));
 								cdr.showPcapDownload = isWithinSixDays(callDate);
 								cdr.enableNetworkTraceDownload = miscSettings.enableNetworkTraceDownload;
+								cdr.enableGoogleIcons = miscSettings.enableGoogleIcons;
+								cdr.hideDeviceIcons = miscSettings.hideDeviceIcons;
 							});
 
 							// Make other legs available when querying but not copying
@@ -466,7 +479,8 @@ define(function(require) {
 									.append($(self.getTemplate({
 										name: 'interactionLegs',
 										data: {
-											cdrs: formattedCdrs
+											cdrs: formattedCdrs,
+											miscSettings: miscSettings
 										},
 										submodule: 'callLogs'
 									})));
@@ -510,7 +524,9 @@ define(function(require) {
 							name: 'cdrsList',
 							data: {
 								cdrs: newCdrs,
-								showReport: monster.config.whitelabel.callReportEmail ? true : false
+								showReport: monster.config.whitelabel.callReportEmail ? true : false,
+								enableGoogleIcons: miscSettings.enableGoogleIcons,
+								enableDirectionText: miscSettings.enableDirectionText
 							},
 							submodule: 'callLogs'
 						}));
